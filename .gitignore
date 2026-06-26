@@ -1,0 +1,28 @@
+# Python + uv
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+*.whl
+
+# Environments
+.env
+.env.local
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.swp
+
+# Editors
+.vscode/
+.idea/
+
+# Bundled models (git LFS)
+models/*.onnx
+models/*tokenizer*
