@@ -4,6 +4,8 @@
 
 Hybrid MCP server for Semantic Scholar. Same 14 tools as the upstream reference, but with a persistent SQLite cache so repeat lookups cost nothing, plus offline fallback when the API hiccups. Designed for hackathon, proposal, thesis, and article workflows. Pairs with the document-writing skill: search, list tracked papers, export BibTeX, paste into the document.
 
+**Multilingual support**: primary user is Indonesian developer. Embedding model handles 100+ langs including Indonesian natively. Search queries in any language work.
+
 Reference: https://github.com/akapet00/semantic-scholar-mcp
 
 ## How it works
@@ -53,7 +55,16 @@ Tables:
 
 ## Vector search
 
-Bundle a small ONNX MiniLM-L6-v2 model (~30MB) in `models/`. Embed new papers on insert. KNN search for "find similar" offline. Fall back to FTS5 lexical search if the model fails to load. Never fail loud, degrade gracefully.
+Bundle `intfloat/multilingual-e5-small` int8 ONNX (~118MB) in `models/`. Multilingual bi-encoder, 100+ langs including Indonesian (MIRACL 50.7 nDCG@10). 384-dim output, XLM-R SentencePiece tokenizer, MIT license.
+
+**Required prefix** at encode time (baked into mE5 training):
+- Search queries: prepend `"query: "`
+- Indexed documents: prepend `"passage: "`
+- Skip prefix = significant quality drop
+
+Embed new papers on insert. KNN search for "find similar" offline. Fall back to FTS5 lexical search if the model fails to load. Never fail loud, degrade gracefully.
+
+**Rerank deferred to v3**: no cross-encoder under 200MB int8 has Indonesian benchmark. Only candidates that fit (mmarco-mMiniLMv2-L6/L12) train on machine-translated mMARCO with no published MIRACL/ID score. Bundling one would add 70-118MB for unverified gain. Bi-encoder alone covers ID natively at 118MB total. Re-evaluate after v1 ships and corpus testing shows ranking problems.
 
 ## Env vars
 
@@ -63,7 +74,7 @@ Prefix `SPM_` (Scholar Paper MCP):
 - `SPM_CACHE_PATH`: default `~/.local/share/scholar-paper-mcp/cache.db`
 - `SPM_CACHE_TTL`: default 30 days (papers are immutable, unlike the reference's 5 min in-memory TTL)
 - `SPM_OFFLINE_MODE`: force offline, never call API
-- `SPM_EMBEDDING_MODEL`: default bundled, `none` to disable
+- `SPM_EMBEDDING_MODEL`: default `intfloat/multilingual-e5-small` int8 ONNX, `none` to disable
 - `SPM_DEFAULT_*_LIMIT`: search, papers, citations defaults
 
 ## Module layout
@@ -107,7 +118,7 @@ models/                # bundled ONNX + tokenizer
 
 3. SQLite schema and migrations
 4. Storage CRUD: papers, authors, citations, sessions
-5. Embeddings + FTS5
+5. Embeddings + FTS5 (mE5-small int8, query/passage prefix)
 
 **Tranche C: API and cache**
 
@@ -133,7 +144,7 @@ models/                # bundled ONNX + tokenizer
 ## Risks
 
 1. SS API rate limits (5k per 5 min shared): token bucket + circuit breaker, cache means repeat queries cost zero
-2. sqlite-vec and ONNX bundle size: git LFS for the model, ~30MB
+2. sqlite-vec and ONNX bundle size: git LFS for multilingual-e5-small int8 model, ~118MB
 3. ONNX model offline availability: fall back to FTS5 with a warning, never fail
 4. FastMCP stdio on OpenCode: same protocol as Claude Code, low risk, verify in issue 13
 5. Stale cached papers: papers are immutable, 30 day TTL is conservative, add a `revalidate` tool later if needed
@@ -142,11 +153,11 @@ models/                # bundled ONNX + tokenizer
 
 ## Open questions
 
-1. Embedding model source: bundle via git LFS (recommended) or download on first run? My pick: git LFS.
+1. Embedding model: settled on `intfloat/multilingual-e5-small` int8 ONNX (118MB, 384-dim, MIT). Source: git LFS. Rerank: deferred to v3, no small multilingual cross-encoder with Indonesian benchmark.
 2. Cache schema migration tool: provide `spm migrate` CLI? Or rely on `PRAGMA user_version`? My pick: pragma + embedded migrations.
 3. Citation export formats: BibTeX only, or also CSL-JSON, RIS, EndNote? My pick: BibTeX v1, add others later.
 4. Issue tracker: GitHub Issues once pushed, or in-repo markdown tracker? My pick: GitHub Issues.
 
 ## Status
 
-Planning. No code yet. Issue #1 is the first build slice.
+Planning. No code yet. Issue #1 is the first build slice. Embedding: mE5-small int8. Rerank: deferred to v3.
