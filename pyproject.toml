@@ -7,7 +7,10 @@ license = { text = "MIT" }
 authors = [{ name = "TudeStillLearning!" }]
 description = "Hybrid MCP server for Semantic Scholar with persistent cache and offline fallback"
 dependencies = [
+    "numpy>=2.0",
+    "onnxruntime>=1.27.0",
     "sqlite-vec>=0.1.9",
+    "tokenizers>=0.23.1",
 ]
 
 [project.urls]

@@ -12,6 +12,13 @@ from scholar_paper_mcp.storage.citations import (
     insert_citation,
     insert_reference,
 )
+from scholar_paper_mcp.storage.embeddings import (
+    Embedder,
+    get_embedder,
+    knn_search,
+    upsert_embedding,
+)
+from scholar_paper_mcp.storage.fts import fts_search
 from scholar_paper_mcp.storage.papers import (
     count_papers,
     delete_paper,
@@ -32,20 +39,24 @@ from scholar_paper_mcp.storage.sessions import (
 )
 
 __all__ = [
+    "Embedder",
     "add_to_session",
     "clear_session",
     "count_authors",
     "count_papers",
     "delete_citations_for_paper",
     "delete_paper",
+    "fts_search",
     "get_author",
     "get_citations_of",
+    "get_embedder",
     "get_paper",
     "get_paper_by_arxiv",
     "get_paper_by_doi",
     "get_references_of",
     "insert_citation",
     "insert_reference",
+    "knn_search",
     "link_paper_author",
     "list_authors",
     "list_paper_authors",
@@ -55,5 +66,6 @@ __all__ = [
     "search_authors_by_name",
     "unlink_paper_author",
     "upsert_author",
+    "upsert_embedding",
     "upsert_paper",
 ]
