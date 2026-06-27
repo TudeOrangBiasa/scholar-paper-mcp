@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from scholar_paper_mcp.api.client import SemanticScholarClient
+from scholar_paper_mcp.api.offline import OfflineDetector
 from scholar_paper_mcp.exceptions import APIServerError, APITimeoutError, OfflineError
 from scholar_paper_mcp.storage.cache import CachedSemanticScholarClient, make_cache_key
 from scholar_paper_mcp.storage.db import apply_migrations, connect
@@ -43,7 +44,9 @@ def _conn(tmp_path: Path):
 
 
 def _client(fake_ss: AsyncMock, conn) -> CachedSemanticScholarClient:
-    return CachedSemanticScholarClient(fake_ss, conn, ttl_days=30)
+    detector = AsyncMock(spec=OfflineDetector)
+    detector.is_online.return_value = True
+    return CachedSemanticScholarClient(fake_ss, conn, ttl_days=30, offline=detector)
 
 
 def _populate_cache(
@@ -247,3 +250,57 @@ async def test_each_endpoint_method_passes_params(tmp_path: Path) -> None:
     await cached.get_paper("abc")
     row = conn.execute("SELECT params_json FROM api_cache").fetchone()
     assert "abc" in row["params_json"]
+
+
+# ── Offline detector integration tests ────────────────────────────
+
+
+async def test_cache_skips_fetch_when_detector_says_offline(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    detector = AsyncMock(spec=OfflineDetector)
+    detector.is_online.return_value = False
+    key = make_cache_key("get_paper", {"paper_id": "off-test-1"})
+    _populate_cache(
+        conn, key, "get_paper", {"paper_id": "off-test-1"}, {"paperId": "old"}, stale=True
+    )
+    cached = CachedSemanticScholarClient(ss, conn, ttl_days=30, offline=detector)
+    data, meta = await cached.get_paper("off-test-1")
+    assert data == {"paperId": "old"}
+    assert meta.source == "offline_cache"
+    ss.get_paper.assert_not_called()
+
+
+async def test_cache_raises_offline_when_detector_says_offline_and_no_cache(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    detector = AsyncMock(spec=OfflineDetector)
+    detector.is_online.return_value = False
+    cached = CachedSemanticScholarClient(ss, conn, ttl_days=30, offline=detector)
+    with pytest.raises(OfflineError):
+        await cached.get_paper("off-test-2")
+
+
+async def test_cache_marks_offline_on_api_failure(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.side_effect = APIServerError("server error")
+    detector = AsyncMock(spec=OfflineDetector)
+    detector.is_online.return_value = True
+    key = make_cache_key("get_paper", {"paper_id": "off-test-3"})
+    _populate_cache(
+        conn, key, "get_paper", {"paper_id": "off-test-3"}, {"paperId": "old"}, stale=True
+    )
+    cached = CachedSemanticScholarClient(ss, conn, ttl_days=30, offline=detector)
+    data, meta = await cached.get_paper("off-test-3")
+    assert data == {"paperId": "old"}
+    assert meta.source == "offline_cache"
+    detector.mark_offline.assert_awaited_once()
+
+
+async def test_cache_uses_settings_force_offline_by_default(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    cached = CachedSemanticScholarClient(ss, conn, ttl_days=30)
+    assert hasattr(cached, "offline")
+    assert cached.offline._force is False

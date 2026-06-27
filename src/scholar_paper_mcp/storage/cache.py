@@ -6,7 +6,11 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
+
 from scholar_paper_mcp.api.client import SemanticScholarClient
+from scholar_paper_mcp.api.offline import OfflineDetector
+from scholar_paper_mcp.config import get_settings
 from scholar_paper_mcp.exceptions import APIServerError, APITimeoutError, OfflineError
 from scholar_paper_mcp.models import CacheMetadata
 
@@ -18,10 +22,21 @@ def make_cache_key(endpoint: str, params: dict[str, Any]) -> str:
 
 
 class CachedSemanticScholarClient:
-    def __init__(self, client: SemanticScholarClient, conn, ttl_days: int = 30) -> None:
+    def __init__(
+        self,
+        client: SemanticScholarClient,
+        conn,
+        ttl_days: int = 30,
+        *,
+        offline: OfflineDetector | None = None,
+    ) -> None:
         self.client = client
         self.conn = conn
         self.ttl_days = ttl_days
+        self.offline = offline or OfflineDetector(
+            httpx.AsyncClient(base_url=str(get_settings().ss_api_base)),
+            force_offline=get_settings().offline_mode,
+        )
 
     async def _with_cache(
         self,
@@ -36,14 +51,22 @@ class CachedSemanticScholarClient:
         if cached and self._is_fresh(cached):
             return json.loads(cached["data_json"]), self._meta(key, now, "cache", cached)
 
-        try:
-            data = await fetch()
-        except (APIServerError, APITimeoutError) as e:
+        if not await self.offline.is_online():
             if cached:
                 return json.loads(cached["data_json"]), self._meta(
                     key, now, "offline_cache", cached, offline=True
                 )
-            raise OfflineError(f"no cache and API unreachable for {endpoint}") from e
+            raise OfflineError(f"offline and no cache for {endpoint}")
+
+        try:
+            data = await fetch()
+        except (APIServerError, APITimeoutError) as e:
+            await self.offline.mark_offline()
+            if cached:
+                return json.loads(cached["data_json"]), self._meta(
+                    key, now, "offline_cache", cached, offline=True
+                )
+            raise OfflineError(f"API failed for {endpoint}") from e
 
         ttl_until = now + timedelta(days=self.ttl_days)
         self._write(key, endpoint, params, data, now, ttl_until)
