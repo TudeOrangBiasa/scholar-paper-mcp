@@ -7,6 +7,7 @@ license = { text = "MIT" }
 authors = [{ name = "TudeStillLearning!" }]
 description = "Hybrid MCP server for Semantic Scholar with persistent cache and offline fallback"
 dependencies = [
+    "httpx",
     "numpy>=2.0",
     "onnxruntime>=1.27.0",
     "sqlite-vec>=0.1.9",
@@ -48,6 +49,7 @@ python-version = "3.13"
 
 [tool.pytest.ini_options]
 minversion = "8.0"
+asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra -q"
 pythonpath = ["src"]
@@ -57,6 +59,7 @@ dev = [
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.15.20",
     "ty>=0.0.54",
 ]
