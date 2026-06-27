@@ -5,6 +5,7 @@ from scholar_paper_mcp.storage.authors import (
     search_authors_by_name,
     upsert_author,
 )
+from scholar_paper_mcp.storage.cache import CachedSemanticScholarClient, make_cache_key
 from scholar_paper_mcp.storage.citations import (
     delete_citations_for_paper,
     get_citations_of,
@@ -39,6 +40,7 @@ from scholar_paper_mcp.storage.sessions import (
 )
 
 __all__ = [
+    "CachedSemanticScholarClient",
     "Embedder",
     "add_to_session",
     "clear_session",
@@ -62,6 +64,7 @@ __all__ = [
     "list_paper_authors",
     "list_papers",
     "list_session_papers",
+    "make_cache_key",
     "remove_from_session",
     "search_authors_by_name",
     "unlink_paper_author",

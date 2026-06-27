@@ -1,0 +1,249 @@
+"""Tests for CachedSemanticScholarClient."""
+
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from unittest.mock import AsyncMock
+
+import pytest
+
+from scholar_paper_mcp.api.client import SemanticScholarClient
+from scholar_paper_mcp.exceptions import APIServerError, APITimeoutError, OfflineError
+from scholar_paper_mcp.storage.cache import CachedSemanticScholarClient, make_cache_key
+from scholar_paper_mcp.storage.db import apply_migrations, connect
+
+# ── make_cache_key tests ──────────────────────────────────────────
+
+
+def test_make_cache_key_is_deterministic() -> None:
+    k1 = make_cache_key("search_papers", {"query": "ai", "limit": 10})
+    k2 = make_cache_key("search_papers", {"query": "ai", "limit": 10})
+    assert k1 == k2
+
+
+def test_make_cache_key_differs_for_different_params() -> None:
+    k1 = make_cache_key("search_papers", {"query": "ai"})
+    k2 = make_cache_key("search_papers", {"query": "ml"})
+    assert k1 != k2
+
+
+def test_make_cache_key_includes_endpoint() -> None:
+    k1 = make_cache_key("search_papers", {"query": "ai"})
+    k2 = make_cache_key("get_paper", {"query": "ai"})
+    assert k1 != k2
+
+
+# ── Helpers ───────────────────────────────────────────────────────
+
+
+def _conn(tmp_path: Path):
+    c = connect(tmp_path / "test.db")
+    apply_migrations(c)
+    return c
+
+
+def _client(fake_ss: AsyncMock, conn) -> CachedSemanticScholarClient:
+    return CachedSemanticScholarClient(fake_ss, conn, ttl_days=30)
+
+
+def _populate_cache(
+    conn, key: str, endpoint: str, params: dict, data: dict, *, stale: bool = False
+) -> None:
+    now = datetime.now(UTC)
+    fetched = (now - timedelta(days=60)).isoformat() if stale else now.isoformat()
+    ttl = (now - timedelta(days=1)).isoformat() if stale else (now + timedelta(days=30)).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO api_cache (cache_key, endpoint, params_json, data_json, fetched_at, ttl_until) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (key, endpoint, json.dumps(params, default=str), json.dumps(data), fetched, ttl),
+    )
+    conn.commit()
+
+
+# ── Cache behavior tests ──────────────────────────────────────────
+
+
+async def test_cache_hit_returns_without_calling_client(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    cached = _client(ss, conn)
+    key = make_cache_key("get_paper", {"paper_id": "abc"})
+    _populate_cache(conn, key, "get_paper", {"paper_id": "abc"}, {"paperId": "abc"})
+    data, _ = await cached.get_paper("abc")
+    assert data == {"paperId": "abc"}
+    assert ss.get_paper.call_count == 0
+
+
+async def test_cache_miss_calls_client_and_persists(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "new"}
+    cached = _client(ss, conn)
+    data, _ = await cached.get_paper("new")
+    assert data == {"paperId": "new"}
+    ss.get_paper.assert_awaited_once_with("new", fields=None)
+    row = conn.execute("SELECT * FROM api_cache").fetchone()
+    assert row is not None
+    assert row["endpoint"] == "get_paper"
+
+
+async def test_cache_stale_calls_client_and_updates(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "fresh"}
+    key = make_cache_key("get_paper", {"paper_id": "stale1"})
+    _populate_cache(
+        conn, key, "get_paper", {"paper_id": "stale1"}, {"paperId": "stale"}, stale=True
+    )
+    cached = _client(ss, conn)
+    data, _ = await cached.get_paper("stale1")
+    assert data == {"paperId": "fresh"}
+    ss.get_paper.assert_awaited_once()
+    row = conn.execute("SELECT * FROM api_cache WHERE cache_key=?", (key,)).fetchone()
+    # ttl_until should be updated (future)
+    assert datetime.fromisoformat(row["ttl_until"]) > datetime.now(UTC)
+
+
+async def test_api_failure_with_stale_cache_returns_offline(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.side_effect = APIServerError("server error")
+    key = make_cache_key("get_paper", {"paper_id": "offline1"})
+    _populate_cache(
+        conn, key, "get_paper", {"paper_id": "offline1"}, {"paperId": "stale"}, stale=True
+    )
+    cached = _client(ss, conn)
+    data, _ = await cached.get_paper("offline1")
+    assert data == {"paperId": "stale"}
+    ss.get_paper.assert_awaited_once()
+
+
+async def test_api_failure_with_no_cache_raises_offline_error(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.side_effect = APIServerError("server error")
+    cached = _client(ss, conn)
+    with pytest.raises(OfflineError):
+        await cached.get_paper("nonexistent")
+
+
+async def test_api_failure_with_timeout_returns_offline_cache(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.side_effect = APITimeoutError("timeout")
+    key = make_cache_key("get_paper", {"paper_id": "timeout1"})
+    _populate_cache(
+        conn, key, "get_paper", {"paper_id": "timeout1"}, {"paperId": "stale"}, stale=True
+    )
+    cached = _client(ss, conn)
+    data, _ = await cached.get_paper("timeout1")
+    assert data == {"paperId": "stale"}
+
+
+# ── CacheMetadata tests ───────────────────────────────────────────
+
+
+async def test_cache_metadata_source_cache_on_hit(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    key = make_cache_key("get_paper", {"paper_id": "meta1"})
+    _populate_cache(conn, key, "get_paper", {"paper_id": "meta1"}, {"paperId": "abc"})
+    cached = _client(ss, conn)
+    _, meta = await cached.get_paper("meta1")
+    assert meta.source == "cache"
+
+
+async def test_cache_metadata_source_api_on_miss(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "new"}
+    cached = _client(ss, conn)
+    _, meta = await cached.get_paper("new")
+    assert meta.source == "api"
+
+
+async def test_cache_metadata_source_offline_cache_on_failure(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.side_effect = APIServerError("server error")
+    key = make_cache_key("get_paper", {"paper_id": "offline2"})
+    _populate_cache(
+        conn, key, "get_paper", {"paper_id": "offline2"}, {"paperId": "stale"}, stale=True
+    )
+    cached = _client(ss, conn)
+    _, meta = await cached.get_paper("offline2")
+    assert meta.source == "offline_cache"
+
+
+async def test_cache_metadata_offline_flag(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.side_effect = APIServerError("server error")
+    key = make_cache_key("get_paper", {"paper_id": "offline3"})
+    _populate_cache(
+        conn, key, "get_paper", {"paper_id": "offline3"}, {"paperId": "stale"}, stale=True
+    )
+    cached = _client(ss, conn)
+    _, meta = await cached.get_paper("offline3")
+    assert meta.offline is True
+
+
+async def test_cache_metadata_cached_true_on_hit(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    key = make_cache_key("get_paper", {"paper_id": "hit1"})
+    _populate_cache(conn, key, "get_paper", {"paper_id": "hit1"}, {"paperId": "abc"})
+    cached = _client(ss, conn)
+    _, meta = await cached.get_paper("hit1")
+    assert meta.cached is True
+
+
+async def test_cache_metadata_cached_false_on_miss(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "new"}
+    cached = _client(ss, conn)
+    _, meta = await cached.get_paper("new")
+    assert meta.cached is False
+
+
+async def test_cache_metadata_ttl_until_set(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "new"}
+    cached = _client(ss, conn)
+    _, meta = await cached.get_paper("new")
+    assert meta.ttl_until is not None
+    assert meta.ttl_until > datetime.now(UTC)
+
+
+async def test_cache_metadata_cache_key_set(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "new"}
+    cached = _client(ss, conn)
+    _, meta = await cached.get_paper("new")
+    assert meta.cache_key == make_cache_key("get_paper", {"paper_id": "new"})
+
+
+# ── Endpoint method tests ─────────────────────────────────────────
+
+
+async def test_each_endpoint_method_uses_correct_endpoint_name(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "abc"}
+    cached = _client(ss, conn)
+    await cached.get_paper("abc")
+    row = conn.execute("SELECT endpoint FROM api_cache").fetchone()
+    assert row["endpoint"] == "get_paper"
+
+
+async def test_each_endpoint_method_passes_params(tmp_path: Path) -> None:
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "abc"}
+    cached = _client(ss, conn)
+    await cached.get_paper("abc")
+    row = conn.execute("SELECT params_json FROM api_cache").fetchone()
+    assert "abc" in row["params_json"]
