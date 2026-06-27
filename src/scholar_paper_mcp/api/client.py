@@ -150,12 +150,20 @@ class SemanticScholarClient:
         )
 
     async def get_recommendations(
-        self, paper_id: str, *, limit: int = 100, fields: str | None = None
+        self,
+        paper_id: str,
+        *,
+        limit: int = 100,
+        fields: str | None = None,
+        positive_ids: list[str] | None = None,
+        negative_ids: list[str] | None = None,
     ) -> dict[str, Any]:
-        return await self._get(
-            f"/paper/{paper_id}/recommendations",
-            {
-                "limit": limit,
-                "fields": fields or DEFAULT_PAPER_FIELDS,
-            },
-        )
+        params: dict[str, Any] = {
+            "limit": limit,
+            "fields": fields or DEFAULT_PAPER_FIELDS,
+        }
+        if positive_ids:
+            params["positive"] = ",".join(positive_ids)
+        if negative_ids:
+            params["negative"] = ",".join(negative_ids)
+        return await self._get(f"/paper/{paper_id}/recommendations", params)

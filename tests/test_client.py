@@ -99,6 +99,39 @@ async def test_get_recommendations_path() -> None:
     assert result == {"data": []}
 
 
+async def test_get_recommendations_sends_positive_ids() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/paper/abc123/recommendations"
+        assert request.url.params["positive"] == "p1,p2"
+        return httpx.Response(200, json={"data": []})
+
+    transport = httpx.MockTransport(handler)
+    async with SemanticScholarClient(transport=transport, base_url="http://test") as client:
+        await client.get_recommendations("abc123", positive_ids=["p1", "p2"])
+
+
+async def test_get_recommendations_sends_negative_ids() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/paper/abc123/recommendations"
+        assert request.url.params["negative"] == "n1,n2"
+        return httpx.Response(200, json={"data": []})
+
+    transport = httpx.MockTransport(handler)
+    async with SemanticScholarClient(transport=transport, base_url="http://test") as client:
+        await client.get_recommendations("abc123", negative_ids=["n1", "n2"])
+
+
+async def test_get_recommendations_no_positive_when_empty() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/paper/abc123/recommendations"
+        assert "positive" not in request.url.params
+        return httpx.Response(200, json={"data": []})
+
+    transport = httpx.MockTransport(handler)
+    async with SemanticScholarClient(transport=transport, base_url="http://test") as client:
+        await client.get_recommendations("abc123", positive_ids=[])
+
+
 # ── API key tests ────────────────────────────────────────────────
 
 

@@ -143,7 +143,7 @@ def test_cache_metadata_minimal() -> None:
 def test_cache_metadata_valid_sources() -> None:
     """CacheMetadata accepts all valid sources."""
     now = datetime.now(timezone.utc)
-    for source in ("cache", "api", "offline_cache"):
+    for source in ("cache", "api", "offline_cache", "embeddings"):
         cm = CacheMetadata(cached=True, fetched_at=now, source=source)  # type: ignore[arg-type]
         assert cm.source == source
 
@@ -154,7 +154,7 @@ def test_cache_metadata_invalid_source() -> None:
         CacheMetadata(
             cached=True,
             fetched_at=datetime.now(timezone.utc),
-            source=cast(Literal["cache", "api", "offline_cache"], "invalid"),
+            source=cast(Literal["cache", "api", "offline_cache", "embeddings"], "invalid"),
         )
 
 

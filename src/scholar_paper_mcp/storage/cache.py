@@ -163,10 +163,24 @@ class CachedSemanticScholarClient:
             ),
         )
 
-    async def get_recommendations(self, paper_id, *, limit=100, fields=None):
-        params = {"paper_id": paper_id, "limit": limit, "fields": fields}
+    async def get_recommendations(
+        self, paper_id, *, limit=100, fields=None, positive_ids=None, negative_ids=None
+    ):
+        params = {
+            "paper_id": paper_id,
+            "limit": limit,
+            "fields": fields,
+            "positive_ids": positive_ids,
+            "negative_ids": negative_ids,
+        }
         return await self._with_cache(
             "get_recommendations",
             params,
-            lambda: self.client.get_recommendations(paper_id, limit=limit, fields=fields),
+            lambda: self.client.get_recommendations(
+                paper_id,
+                limit=limit,
+                fields=fields,
+                positive_ids=positive_ids,
+                negative_ids=negative_ids,
+            ),
         )

@@ -84,7 +84,7 @@ class CacheMetadata(_Base):
 
     cached: bool
     fetched_at: datetime
-    source: Literal["cache", "api", "offline_cache"]
+    source: Literal["cache", "api", "offline_cache", "embeddings"]
     offline: bool = False
     ttl_until: datetime | None = None
     cache_key: str | None = None
