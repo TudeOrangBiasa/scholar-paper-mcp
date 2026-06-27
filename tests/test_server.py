@@ -5,7 +5,7 @@ import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -299,3 +299,30 @@ async def test_consolidate_authors_wrapper(real_conn) -> None:
     result = await consolidate_authors(ctx, "canon", [])
     parsed = json.loads(result)
     assert "data" in parsed
+
+
+@pytest.mark.asyncio
+async def test_lifespan_cleans_up_on_setup_failure() -> None:
+    """If apply_migrations raises, conn must close."""
+    from scholar_paper_mcp import server
+
+    with patch.object(server, "connect") as mock_connect:
+        mock_conn = MagicMock()
+        mock_conn.close = MagicMock()
+        mock_connect.return_value = mock_conn
+
+        with patch.object(server, "SemanticScholarClient") as mock_cls:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            mock_cls.return_value = mock_client
+
+        with (
+            patch.object(server, "apply_migrations", side_effect=RuntimeError("boom")),
+            pytest.raises(RuntimeError),
+        ):
+            async with server.lifespan(server.mcp):
+                pass
+
+        mock_conn.close.assert_called_once()
+        # raw_client never created (exception before assignment), so close not called
+        mock_client.close.assert_not_called()

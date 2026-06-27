@@ -20,7 +20,10 @@ class Embedder:
             raise EmbeddingModelNotFoundError(f"model not found: {model_path}")
         if not tokenizer_path.exists():
             raise EmbeddingModelNotFoundError(f"tokenizer not found: {tokenizer_path}")
-        self.session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+        try:
+            self.session = ort.InferenceSession(str(model_path), providers=["CPUExecutionProvider"])
+        except Exception as e:
+            raise EmbeddingModelNotFoundError(f"failed to load model: {model_path}") from e
         self.tokenizer = Tokenizer.from_file(str(tokenizer_path))
         self.dim = 384
 
@@ -68,6 +71,7 @@ def upsert_embedding(conn, paper_id: str, embedding: list[float]) -> None:
         "INSERT INTO embeddings_vec (paper_id, embedding) VALUES (?, ?)",
         (paper_id, arr),
     )
+    conn.commit()
 
 
 def knn_search(conn, query_embedding: list[float], k: int = 10) -> list[tuple[str, float]]:

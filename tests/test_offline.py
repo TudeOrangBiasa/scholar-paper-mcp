@@ -46,6 +46,15 @@ async def test_probe_returns_true_on_404() -> None:
 
 
 @pytest.mark.asyncio
+async def test_probe_returns_false_on_write_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.WriteError("write failed")
+
+    detector = OfflineDetector(_make_client(handler))
+    assert await detector.is_online() is False
+
+
+@pytest.mark.asyncio
 async def test_probe_returns_false_on_timeout() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.TimeoutException("timeout")

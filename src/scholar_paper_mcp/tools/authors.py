@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from typing import Any, Literal
 
+from scholar_paper_mcp.exceptions import APINotFoundError
 from scholar_paper_mcp.models import (
     Author,
     AuthorSearchResult,
@@ -170,7 +171,7 @@ async def consolidate_authors(
 ) -> ToolResponse[Author]:
     canonical = _get_author_from_db(conn, canonical_id)
     if canonical is None:
-        raise ValueError(f"author not found: {canonical_id}")
+        raise APINotFoundError(f"author not found: {canonical_id}")
 
     seen_paper_ids = {p.paper_id for p in canonical.papers}
     seen_aliases = set(canonical.aliases) | {canonical.name}
@@ -200,4 +201,5 @@ async def consolidate_authors(
     canonical.fetched_at = now
     canonical.ttl_until = now + timedelta(days=30)
     _upsert_author_to_db(conn, canonical)
+    conn.commit()
     return ToolResponse(data=canonical, meta=_meta("cache"))

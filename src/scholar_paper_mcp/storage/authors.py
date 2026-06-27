@@ -47,6 +47,7 @@ def upsert_author(conn, author: Author) -> None:
             author.ttl_until.isoformat(),
         ),
     )
+    conn.commit()
 
 
 def get_author(conn, author_id: str) -> Author | None:
@@ -67,6 +68,7 @@ def count_authors(conn) -> int:
 
 def delete_author(conn, author_id: str) -> None:
     conn.execute("DELETE FROM authors WHERE author_id = ?", (author_id,))
+    conn.commit()
 
 
 def search_authors_by_name(conn, name: str, *, limit: int = 20) -> list[Author]:

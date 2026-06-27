@@ -9,7 +9,12 @@ import pytest
 
 from scholar_paper_mcp.api.client import SemanticScholarClient
 from scholar_paper_mcp.api.offline import OfflineDetector
-from scholar_paper_mcp.exceptions import APIServerError, APITimeoutError, OfflineError
+from scholar_paper_mcp.exceptions import (
+    APIRateLimitError,
+    APIServerError,
+    APITimeoutError,
+    OfflineError,
+)
 from scholar_paper_mcp.storage.cache import CachedSemanticScholarClient, make_cache_key
 from scholar_paper_mcp.storage.db import apply_migrations, connect
 
@@ -296,6 +301,56 @@ async def test_cache_marks_offline_on_api_failure(tmp_path: Path) -> None:
     assert data == {"paperId": "old"}
     assert meta.source == "offline_cache"
     detector.mark_offline.assert_awaited_once()
+
+
+async def test_cache_returns_stale_on_rate_limit(tmp_path: Path) -> None:
+    """429 returns stale cache without marking offline."""
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.side_effect = APIRateLimitError("rate limited")
+    detector = AsyncMock(spec=OfflineDetector)
+    detector.is_online.return_value = True
+    key = make_cache_key("get_paper", {"paper_id": "rate-test-1"})
+    _populate_cache(
+        conn, key, "get_paper", {"paper_id": "rate-test-1"}, {"paperId": "stale"}, stale=True
+    )
+    cached = CachedSemanticScholarClient(ss, conn, ttl_days=30, offline=detector)
+    data, meta = await cached.get_paper("rate-test-1")
+    assert data == {"paperId": "stale"}
+    assert meta.source == "offline_cache"
+    # Rate-limited is not offline — server is up
+    detector.mark_offline.assert_not_awaited()
+
+
+async def test_corrupt_cache_row_treated_as_miss(tmp_path: Path) -> None:
+    """Corrupt data_json in cache should be treated as cache miss, not crash."""
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.return_value = {"paperId": "fresh"}
+    key = make_cache_key("get_paper", {"paper_id": "corrupt1"})
+    # Insert row with corrupt JSON
+    conn.execute(
+        "INSERT INTO api_cache (cache_key, endpoint, params_json, data_json, fetched_at, ttl_until) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (key, "get_paper", "{}", "not valid json", "2026-01-01T00:00:00Z", "2099-01-01T00:00:00Z"),
+    )
+    conn.commit()
+    cached = _client(ss, conn)
+    data, _ = await cached.get_paper("corrupt1")
+    assert data == {"paperId": "fresh"}
+    ss.get_paper.assert_awaited_once()
+
+
+async def test_cache_raises_on_rate_limit_with_no_cache(tmp_path: Path) -> None:
+    """429 with no cached data raises APIRateLimitError."""
+    conn = _conn(tmp_path)
+    ss = AsyncMock(spec=SemanticScholarClient)
+    ss.get_paper.side_effect = APIRateLimitError("rate limited")
+    detector = AsyncMock(spec=OfflineDetector)
+    detector.is_online.return_value = True
+    cached = CachedSemanticScholarClient(ss, conn, ttl_days=30, offline=detector)
+    with pytest.raises(APIRateLimitError):
+        await cached.get_paper("missing")
 
 
 async def test_cache_uses_settings_force_offline_by_default(tmp_path: Path) -> None:

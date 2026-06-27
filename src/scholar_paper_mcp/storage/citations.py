@@ -17,6 +17,7 @@ def insert_citation(conn, edge: CitationEdge) -> None:
             int(edge.is_influential),
         ),
     )
+    conn.commit()
 
 
 def insert_reference(conn, edge: CitationEdge) -> None:
@@ -27,6 +28,7 @@ def insert_reference(conn, edge: CitationEdge) -> None:
             is_influential = excluded.is_influential""",
         (edge.from_paper_id, edge.to_paper_id, int(edge.is_influential)),
     )
+    conn.commit()
 
 
 def get_citations_of(conn, paper_id: str, *, limit: int = 100) -> list[CitationEdge]:
@@ -53,6 +55,7 @@ def delete_citations_for_paper(conn, paper_id: str) -> None:
         "DELETE FROM paper_references WHERE from_paper_id = ? OR to_paper_id = ?",
         (paper_id, paper_id),
     )
+    conn.commit()
 
 
 def _row_to_citation(row) -> CitationEdge:

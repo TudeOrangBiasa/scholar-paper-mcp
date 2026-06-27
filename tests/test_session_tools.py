@@ -135,6 +135,12 @@ async def test_list_session_skips_missing_papers(conn) -> None:
 # ── format_bibtex_entry / export_bibtex ──────────────────
 
 
+def test_format_bibtex_entry_escapes_braces() -> None:
+    paper = _make_paper("p1", title="A {Study} of Braces")
+    bib = format_bibtex_entry(paper)
+    assert "A \\{Study\\} of Braces" in bib
+
+
 def test_format_bibtex_entry_basic() -> None:
     paper = _make_paper(
         "abc",

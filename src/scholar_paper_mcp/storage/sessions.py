@@ -6,6 +6,7 @@ def add_to_session(conn, session_id: str, paper_id: str) -> None:
         "INSERT OR IGNORE INTO session_papers (session_id, paper_id, added_at) VALUES (?, ?, ?)",
         (session_id, paper_id, datetime.now(UTC).isoformat()),
     )
+    conn.commit()
 
 
 def remove_from_session(conn, session_id: str, paper_id: str) -> None:
@@ -13,6 +14,7 @@ def remove_from_session(conn, session_id: str, paper_id: str) -> None:
         "DELETE FROM session_papers WHERE session_id = ? AND paper_id = ?",
         (session_id, paper_id),
     )
+    conn.commit()
 
 
 def list_session_papers(conn, session_id: str) -> list[str]:
@@ -25,3 +27,4 @@ def list_session_papers(conn, session_id: str) -> list[str]:
 
 def clear_session(conn, session_id: str) -> None:
     conn.execute("DELETE FROM session_papers WHERE session_id = ?", (session_id,))
+    conn.commit()

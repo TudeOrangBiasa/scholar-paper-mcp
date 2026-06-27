@@ -51,5 +51,5 @@ class OfflineDetector:
         try:
             await self._client.head("/", timeout=self._timeout)
             return True
-        except (httpx.TimeoutException, httpx.ConnectError, httpx.RemoteProtocolError):
+        except httpx.RequestError:
             return False

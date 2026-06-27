@@ -1,5 +1,6 @@
 """Semantic Scholar HTTP client with rate limiting and circuit breaker."""
 
+import re
 from typing import Any
 
 import httpx
@@ -8,6 +9,14 @@ from scholar_paper_mcp.api.circuit_breaker import CircuitBreaker
 from scholar_paper_mcp.api.rate_limiter import TokenBucket
 from scholar_paper_mcp.config import get_settings
 from scholar_paper_mcp.exceptions import APINotFoundError, APIRateLimitError, APIServerError
+
+_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:\-]+$")
+
+
+def _validate_id(value: str, name: str) -> None:
+    if not _ID_PATTERN.match(value):
+        raise ValueError(f"invalid {name}: {value!r}")
+
 
 DEFAULT_PAPER_FIELDS = (
     "paperId,title,abstract,year,venue,publicationTypes,fieldsOfStudy,"
@@ -23,8 +32,8 @@ class SemanticScholarClient:
         *,
         base_url: str | None = None,
         api_key: str | None = None,
-        rate: float = 100.0,
-        burst: int = 100,
+        rate: float = 0.5,
+        burst: int = 5,
         failure_threshold: int = 5,
         reset_timeout: float = 60.0,
         timeout: float = 30.0,
@@ -85,6 +94,7 @@ class SemanticScholarClient:
         )
 
     async def get_paper(self, paper_id: str, *, fields: str | None = None) -> dict[str, Any]:
+        _validate_id(paper_id, "paper_id")
         return await self._get(
             f"/paper/{paper_id}",
             {
@@ -130,6 +140,7 @@ class SemanticScholarClient:
         )
 
     async def get_author(self, author_id: str, *, fields: str | None = None) -> dict[str, Any]:
+        _validate_id(author_id, "author_id")
         return await self._get(
             f"/author/{author_id}",
             {

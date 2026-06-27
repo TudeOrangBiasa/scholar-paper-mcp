@@ -6,6 +6,7 @@ import pytest
 from pydantic import HttpUrl
 
 from scholar_paper_mcp.models import Author, AuthorBrief, Paper
+from scholar_paper_mcp.storage.db import apply_migrations, connect
 from scholar_paper_mcp.storage.papers import (
     count_papers,
     delete_paper,
@@ -192,3 +193,74 @@ def test_embedding_none_roundtrip(conn, now) -> None:
     result = get_paper(conn, "p1")
     assert result is not None
     assert result.embedding is None
+
+
+def test_upsert_paper_persists_across_connection_close(tmp_path) -> None:
+    """Verify conn.commit() ensures data survives connection restart."""
+    db = tmp_path / "test.db"
+    conn1 = connect(db)
+    apply_migrations(conn1)
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    paper = Paper(paper_id="p1", title="T", fetched_at=now, ttl_until=now + timedelta(days=30))
+    upsert_paper(conn1, paper)
+    conn1.close()
+    conn2 = connect(db)
+    assert get_paper(conn2, "p1") is not None
+    conn2.close()
+
+
+def test_delete_paper_persists_across_connection_close(tmp_path) -> None:
+    db = tmp_path / "test.db"
+    conn1 = connect(db)
+    apply_migrations(conn1)
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    upsert_paper(conn1, Paper(paper_id="p1", fetched_at=now, ttl_until=now + timedelta(days=30)))
+    conn1.commit()
+    delete_paper(conn1, "p1")
+    conn1.close()
+    conn2 = connect(db)
+    assert get_paper(conn2, "p1") is None
+    conn2.close()
+
+
+def test_delete_paper_removes_embedding(tmp_path) -> None:
+    from scholar_paper_mcp.storage.embeddings import knn_search, upsert_embedding
+
+    db = tmp_path / "test.db"
+    conn1 = connect(db)
+    apply_migrations(conn1)
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    upsert_paper(conn1, Paper(paper_id="p1", fetched_at=now, ttl_until=now + timedelta(days=30)))
+    conn1.commit()
+    upsert_embedding(conn1, "p1", [0.1] * 384)
+    delete_paper(conn1, "p1")
+    assert knn_search(conn1, [0.1] * 384, k=1) == []
+    conn1.close()
+
+
+def test_link_unlink_paper_author_persists_across_connection_close(tmp_path) -> None:
+    db = tmp_path / "test.db"
+    conn1 = connect(db)
+    apply_migrations(conn1)
+    from datetime import UTC, datetime
+
+    now = datetime.now(UTC)
+    upsert_paper(conn1, Paper(paper_id="p1", fetched_at=now, ttl_until=now + timedelta(days=30)))
+    from scholar_paper_mcp.models import Author
+    from scholar_paper_mcp.storage.authors import upsert_author
+
+    upsert_author(
+        conn1, Author(author_id="a1", name="A", fetched_at=now, ttl_until=now + timedelta(days=30))
+    )
+    conn1.commit()
+    link_paper_author(conn1, "p1", "a1", 0)
+    conn1.close()
+    conn2 = connect(db)
+    assert list_paper_authors(conn2, "p1") == [("a1", 0)]
+    conn2.close()

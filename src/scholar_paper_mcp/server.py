@@ -32,24 +32,29 @@ async def lifespan(server: FastMCP):
     init_cache_dir()
     settings = get_settings()
     conn = connect()
-    apply_migrations(conn)
-    raw_client = SemanticScholarClient()
-    offline = OfflineDetector(
-        raw_client._client,
-        force_offline=settings.offline_mode,
-    )
-    cached = CachedSemanticScholarClient(raw_client, conn, offline=offline)
-    embedder: Embedder | None = None
-    if settings.embedding_model != "none":
-        try:
-            embedder = get_embedder()
-        except EmbeddingModelNotFoundError as e:
-            logger.warning("embedding model not available: %s", e)
-    state = ServerState(conn=conn, raw_client=raw_client, cached=cached, embedder=embedder)
     try:
-        yield state
+        apply_migrations(conn)
+        raw_client = SemanticScholarClient()
+        try:
+            offline = OfflineDetector(
+                raw_client._client,
+                force_offline=settings.offline_mode,
+            )
+            cached = CachedSemanticScholarClient(raw_client, conn, offline=offline)
+            embedder: Embedder | None = None
+            if settings.embedding_model != "none":
+                try:
+                    embedder = get_embedder()
+                except EmbeddingModelNotFoundError as e:
+                    logger.warning("embedding model not available: %s", e)
+            state = ServerState(conn=conn, raw_client=raw_client, cached=cached, embedder=embedder)
+            yield state
+        finally:
+            try:
+                await raw_client.close()
+            except Exception:
+                logger.exception("error closing httpx client")
     finally:
-        await raw_client.close()
         conn.close()
 
 

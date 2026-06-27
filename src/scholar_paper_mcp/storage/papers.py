@@ -91,6 +91,7 @@ def upsert_paper(conn, paper: Paper) -> None:
             paper.ttl_until.isoformat(),
         ),
     )
+    conn.commit()
 
 
 def get_paper(conn, paper_id: str) -> Paper | None:
@@ -115,7 +116,9 @@ def get_paper_by_arxiv(conn, arxiv_id: str) -> Paper | None:
 
 
 def delete_paper(conn, paper_id: str) -> None:
+    conn.execute("DELETE FROM embeddings_vec WHERE paper_id = ?", (paper_id,))
     conn.execute("DELETE FROM papers WHERE paper_id = ?", (paper_id,))
+    conn.commit()
 
 
 def list_papers(conn, *, limit: int = 20, offset: int = 0) -> list[Paper]:
@@ -135,12 +138,14 @@ def link_paper_author(conn, paper_id: str, author_id: str, position: int = 0) ->
         "ON CONFLICT(paper_id, author_id) DO UPDATE SET author_position = excluded.author_position",
         (paper_id, author_id, position),
     )
+    conn.commit()
 
 
 def unlink_paper_author(conn, paper_id: str, author_id: str) -> None:
     conn.execute(
         "DELETE FROM paper_authors WHERE paper_id = ? AND author_id = ?", (paper_id, author_id)
     )
+    conn.commit()
 
 
 def list_paper_authors(conn, paper_id: str) -> list[tuple[str, int]]:

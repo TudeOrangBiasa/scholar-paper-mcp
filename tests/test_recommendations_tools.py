@@ -137,12 +137,11 @@ async def test_related_papers_raises_without_embedder(conn) -> None:
 
 @pytest.mark.asyncio
 async def test_related_papers_fetches_full_paper_for_related_ids(conn) -> None:
+    from scholar_paper_mcp.storage.embeddings import upsert_embedding as ups_emb
+
     _seed_paper_with_embedding(conn, "src", _unit_vec(0))
-    _seed_paper_with_embedding(conn, "rel1", _unit_vec(0))
-
-    from scholar_paper_mcp.storage.papers import delete_paper as del_paper
-
-    del_paper(conn, "rel1")
+    # Embedding without a papers row — KNN finds it, but get_paper from DB misses
+    ups_emb(conn, "rel1", _unit_vec(0))
 
     client = AsyncMock(spec=CachedSemanticScholarClient)
     client.get_paper.return_value = ({"paperId": "rel1", "title": "Rel1"}, _meta())

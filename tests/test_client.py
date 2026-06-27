@@ -229,3 +229,25 @@ async def test_close_method_closes_client() -> None:
     await client.close()
     # Client closed — no explicit assert, just no leak
     assert True
+
+
+async def test_get_paper_rejects_path_traversal_id() -> None:
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+    async with SemanticScholarClient(transport=transport, base_url="http://test") as client:
+        with pytest.raises((ValueError, APIServerError)):
+            await client.get_paper("../../../etc/passwd")
+
+
+async def test_get_author_rejects_path_traversal_id() -> None:
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+    async with SemanticScholarClient(transport=transport, base_url="http://test") as client:
+        with pytest.raises((ValueError, APIServerError)):
+            await client.get_author("../../../etc/shadow")
+
+
+def test_semantic_scholar_client_default_rate_matches_ss_limits() -> None:
+    transport = httpx.MockTransport(lambda r: httpx.Response(200, json={}))
+    client = SemanticScholarClient(transport=transport, base_url="http://test")
+    # SS unauthenticated: 100 req / 5 min — defaults should be below that
+    assert client.limiter.rate <= 1.0
+    assert client.limiter.capacity <= 10

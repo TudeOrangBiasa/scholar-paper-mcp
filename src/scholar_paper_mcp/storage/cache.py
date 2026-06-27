@@ -11,7 +11,12 @@ import httpx
 from scholar_paper_mcp.api.client import SemanticScholarClient
 from scholar_paper_mcp.api.offline import OfflineDetector
 from scholar_paper_mcp.config import get_settings
-from scholar_paper_mcp.exceptions import APIServerError, APITimeoutError, OfflineError
+from scholar_paper_mcp.exceptions import (
+    APIRateLimitError,
+    APIServerError,
+    APITimeoutError,
+    OfflineError,
+)
 from scholar_paper_mcp.models import CacheMetadata
 
 
@@ -45,11 +50,14 @@ class CachedSemanticScholarClient:
         fetch: Callable[[], Awaitable[dict[str, Any]]],
     ) -> tuple[dict[str, Any], CacheMetadata]:
         key = make_cache_key(endpoint, params)
-        cached = self._read(key)
         now = datetime.now(UTC)
-
-        if cached and self._is_fresh(cached):
-            return json.loads(cached["data_json"]), self._meta(key, now, "cache", cached)
+        cached: dict[str, Any] | None = None
+        try:
+            cached = self._read(key)
+            if cached and self._is_fresh(cached):
+                return json.loads(cached["data_json"]), self._meta(key, now, "cache", cached)
+        except (json.JSONDecodeError, KeyError, ValueError):
+            cached = None  # corrupt row, treat as miss
 
         if not await self.offline.is_online():
             if cached:
@@ -60,6 +68,12 @@ class CachedSemanticScholarClient:
 
         try:
             data = await fetch()
+        except APIRateLimitError:
+            if cached:
+                return json.loads(cached["data_json"]), self._meta(
+                    key, now, "offline_cache", cached, offline=True
+                )
+            raise
         except (APIServerError, APITimeoutError) as e:
             await self.offline.mark_offline()
             if cached:

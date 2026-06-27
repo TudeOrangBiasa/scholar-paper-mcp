@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from scholar_paper_mcp.exceptions import APINotFoundError
 from scholar_paper_mcp.models import Author, CacheMetadata, PaperBrief
 from scholar_paper_mcp.storage.cache import CachedSemanticScholarClient
 from scholar_paper_mcp.storage.db import apply_migrations, connect
@@ -224,7 +225,7 @@ async def test_consolidate_updates_paper_authors_links(conn) -> None:
 
 @pytest.mark.asyncio
 async def test_consolidate_missing_canonical_raises(conn) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(APINotFoundError):
         await consolidate_authors(conn, "nonexistent", [])
 
 

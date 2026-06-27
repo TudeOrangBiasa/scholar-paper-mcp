@@ -27,6 +27,17 @@ def test_load_embedder_raises_if_model_missing(tmp_path: Path) -> None:
         Embedder(missing, tok)
 
 
+def test_embedder_raises_model_not_found_for_corrupt_model(tmp_path: Path) -> None:
+    from scholar_paper_mcp.storage.embeddings import Embedder
+
+    fake = tmp_path / "model.onnx"
+    fake.write_bytes(b"not a real onnx model")
+    tokenizer = tmp_path / "tokenizer.json"
+    tokenizer.write_text("{}")
+    with pytest.raises(EmbeddingModelNotFoundError):
+        Embedder(fake, tokenizer)
+
+
 def test_load_embedder_raises_if_tokenizer_missing(tmp_path: Path) -> None:
     from scholar_paper_mcp.storage.embeddings import Embedder
 
