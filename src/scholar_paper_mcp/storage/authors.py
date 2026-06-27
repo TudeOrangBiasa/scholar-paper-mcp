@@ -65,6 +65,10 @@ def count_authors(conn) -> int:
     return conn.execute("SELECT COUNT(*) FROM authors").fetchone()[0]
 
 
+def delete_author(conn, author_id: str) -> None:
+    conn.execute("DELETE FROM authors WHERE author_id = ?", (author_id,))
+
+
 def search_authors_by_name(conn, name: str, *, limit: int = 20) -> list[Author]:
     rows = conn.execute(
         "SELECT * FROM authors WHERE name LIKE ? COLLATE NOCASE LIMIT ?",
