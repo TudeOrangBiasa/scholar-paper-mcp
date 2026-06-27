@@ -11,6 +11,10 @@ from scholar_paper_mcp.tools.papers import (
     get_paper_references,
     search_papers,
 )
+from scholar_paper_mcp.tools.recommendations import (
+    get_paper_recommendations,
+    get_related_papers,
+)
 
 __all__ = [
     "consolidate_authors",
@@ -19,7 +23,9 @@ __all__ = [
     "get_author_top_papers",
     "get_paper_citations",
     "get_paper_details",
+    "get_paper_recommendations",
     "get_paper_references",
+    "get_related_papers",
     "search_authors",
     "search_papers",
 ]
