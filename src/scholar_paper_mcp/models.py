@@ -37,6 +37,8 @@ class Paper(_Base):
     """Normalized paper matching Semantic Scholar schema."""
 
     paper_id: str
+    fetched_at: datetime
+    ttl_until: datetime
     title: str | None = None
     abstract: str | None = None
     year: int | None = None
@@ -58,6 +60,8 @@ class Author(_Base):
     """Full author with paper references."""
 
     author_id: str
+    fetched_at: datetime
+    ttl_until: datetime
     name: str
     affiliations: list[str] = Field(default_factory=list)
     h_index: int | None = None
