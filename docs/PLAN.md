@@ -48,7 +48,7 @@ Tables:
 - `authors`: SS authorId primary key, name, h-index, raw JSON
 - `paper_authors`: many-to-many
 - `citations`: A cites B
-- `references`: A references B
+- `paper_references`: A references B (renamed from `references`, SQL reserved word)
 - `session_papers`: tracks papers fetched this session, persists across restarts
 - `embeddings_vec`: sqlite-vec virtual column, 384-dim float vectors
 - FTS5 virtual table `papers_fts` synced with `papers` via triggers
@@ -160,4 +160,4 @@ models/                # bundled ONNX + tokenizer
 
 ## Status
 
-Planning. No code yet. Issue #1 is the first build slice. Embedding: mE5-small int8. Rerank: deferred to v3.
+Foundation in progress. Issues #1, #2, #3 done. Embedding: mE5-small int8. Rerank: deferred to v3.
