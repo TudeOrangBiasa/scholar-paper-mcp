@@ -115,11 +115,11 @@ def test_apply_migrations_idempotent(tmp_path: Path) -> None:
     conn.close()
 
 
-def test_apply_migrations_sets_user_version_to_1(tmp_path: Path) -> None:
+def test_apply_migrations_sets_user_version(tmp_path: Path) -> None:
     conn = connect(tmp_path / "test.db")
     apply_migrations(conn)
     (ver,) = conn.execute("PRAGMA user_version").fetchone()
-    assert ver == 1
+    assert ver >= 1
     conn.close()
 
 

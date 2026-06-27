@@ -36,4 +36,13 @@ def apply_migrations(conn: sqlite3.Connection) -> None:
         schema = resources.files("scholar_paper_mcp.storage").joinpath("schema.sql").read_text()
         conn.executescript(schema)
         conn.execute("PRAGMA user_version = 1")
+        current = 1
+    if current < 2:
+        migration = (
+            resources.files("scholar_paper_mcp.storage")
+            .joinpath("migrations/002_api_cache.sql")
+            .read_text()
+        )
+        conn.executescript(migration)
+        conn.execute("PRAGMA user_version = 2")
     conn.commit()
