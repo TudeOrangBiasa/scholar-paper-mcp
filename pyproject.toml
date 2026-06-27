@@ -7,6 +7,7 @@ license = { text = "MIT" }
 authors = [{ name = "TudeStillLearning!" }]
 description = "Hybrid MCP server for Semantic Scholar with persistent cache and offline fallback"
 dependencies = [
+    "fastmcp>=3.4.2",
     "httpx",
     "numpy>=2.0",
     "onnxruntime>=1.27.0",
@@ -53,6 +54,9 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 addopts = "-ra -q"
 pythonpath = ["src"]
+
+[project.scripts]
+scholar-paper-mcp = "scholar_paper_mcp.server:main"
 
 [dependency-groups]
 dev = [
