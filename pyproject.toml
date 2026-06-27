@@ -6,6 +6,9 @@ requires-python = ">=3.13"
 license = { text = "MIT" }
 authors = [{ name = "TudeStillLearning!" }]
 description = "Hybrid MCP server for Semantic Scholar with persistent cache and offline fallback"
+dependencies = [
+    "sqlite-vec>=0.1.9",
+]
 
 [project.urls]
 Homepage = "https://github.com/TudeOrangBiasa/scholar-paper-mcp"
